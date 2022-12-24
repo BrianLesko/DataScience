@@ -1,0 +1,501 @@
+---
+title: "Final Project (Olympics)"
+author: "Brian J Lesko"
+date: '2022-07-29'
+output: prettydoc::html_pretty
+---
+
+# Initial Setup
+
+```{r setup, include=FALSE}
+# Enable echo by default, disable messages, and enable cache to reduce 
+# knitting time when we make minor changes
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, cache = TRUE)
+```
+
+```{r warning = FALSE, message = FALSE, cache = FALSE}
+library(tidyverse)
+library(readr)
+```
+Typical setup done
+
+# Reading in the data
+
+Data info:
+120 years of Olympics data from a Kaggle: https://www.kaggle.com/heesoo37/120-years-of-olympic-history-athletes-and-results
+
+Reading the data using the readr package
+```{r}
+athlete_events <- read_csv(
+   file = 'athlete_events.csv', 
+   col_types = cols(ID = 'i', Age = 'i', Height = 'i', Year = 'i')
+)
+
+noc_regions <- read_csv('noc_regions.csv')
+```
+
+Lets take a look at the data that was just read.
+```{r}
+athlete_events
+noc_regions
+```
+
+*More info on athlete_events and noc_regions*
+noc_regions.csv: National organizing committee (NOC) regions for all the athletes in athlete_events.csv; see this Wikipedia page
+
+athlete_events.csv: each row corresponds to an individual athlete competing in an individual Olympic event (athlete-events)
+
+Lets Load some more data
+Data from Gapminder.org in the R package gapminder (see R4DS 25.2)
+(The install was only run once and then commented out)
+```{r}
+#install.packages("gapminder")
+library(gapminder)
+gapminder_unfiltered
+```
+*About the gapminder data: gapminder_unfiltered*
+excerpt of socioeconomic data (population, GDP, life expectancy) from [gapminder.org] on 142 countries from years 1952 to 2007 in increments of 1 year
+
+#is this data somehow filtered? not sure
+```{r}
+gapminder
+```
+From the gapminder library
+```{r}
+country_codes
+```
+*Info on country_codes:*
+country_codes: ISO 3166-1 country codes for all the countries in gapminder and gapminder_unfiltered
+
+One more data table to go: host_cities.csv this was downloaded from carmen as a txt file
+```{r}
+host_cities <- read_csv('host_cities.csv')
+host_cities
+```
+
+*Info on: host_cities*
+host country for the cities in athlete_events.csv This file is on CarmenCanvas under the Final Project module.
+
+# Converting Country Codes
+
+Last part of Initial setup:
+Use the countrycode() function from the countrycode R package to convert the International Olympic Committee (IOC) country codes (‘ioc’) in the Olympics data to ISO 3166-1 country codes (‘iso3c’) used by gapminder. Note that some IOC codes may not match, because they are no longer used or there is no corresponding country in the Gapminder data.
+
+*Install work*
+```{r}
+#install.packages("countrycode")
+library(countrycode)
+#countrycode()
+
+```
+
+*Chaging Gapminder_Unfiltered's country column to iso3c code* 
+```{r}
+gapminder_unfiltered
+
+#this will return a vector to replace the country column in gapminder_unfiltered. Lets store it to use in a mutate
+country_codes <- countrycode(sourcevar=gapminder_unfiltered$country, origin="country.name", destination="iso3c", nomatch=T)
+
+#for now, lets add a number at the end for each time we modify a data frame
+gapminder_unfiltered1 <- gapminder_unfiltered %>%
+  mutate(country=country_codes)
+
+gapminder_unfiltered1
+```
+
+*Changing athlete_events' country code column to iso3c code*
+note: is it team or NOC? NOC: as the directions state International olympic committee 
+NOC - National Olympic Committee 3-letter code
+Team - Team name
+```{r}
+glimpse(athlete_events)
+#noc_regions
+
+#again, a column of contry codes converted to iso3c standard (for use in a mutate)
+country_codes2 <- countrycode(sourcevar=athlete_events$NOC, origin="ioc", destination="iso3c", nomatch=NA)
+
+#again, lets add a number at the end for each time we modify a data frame
+athlete_events1 <- athlete_events %>%
+  mutate(country=country_codes2)
+
+glimpse(athlete_events1)
+
+```
+
+
+*adding a column to noc_regions with the iso3c country code based on NOC*
+```{r}
+noc_regions
+#again, a column of contry codes converted to iso3c standard (for use in a mutate)
+country_codes3 <- countrycode(sourcevar=noc_regions$NOC, origin="ioc", destination="iso3c", nomatch=NA)
+
+#again, lets add a number at the end for each time we modify a data frame
+noc_regions1 <- noc_regions %>%
+  mutate(country=country_codes3) %>%
+  select(NOC,country,region,notes)
+
+noc_regions1
+
+```
+
+# **Question 1**
+__Is there a relationship between a country’s GDP and the number of athletes it sends to an Olympic games?__ Consider making a scatterplot where each point shows the number of atheltes and GDP of a single country (or NOC) during a single game. You may also want to **consider summer and winter games separately** or separate periods of time.
+
+To answer this question you will at least need to **construct a table containing both numbers of athletes for each country, olympic games, and the country’s GDP.** Note that **socioeconomic data does not cover the entire 120 years of Olympics and it does not cover all countries that have participated**, so you can **restrict these questions to the available data**. You will have to think about how to **join the gapminder data with the Olympics data**. You will also have to think about how to **count the number of athletes, because some athletes participate in more than one event**
+
+Hint: Consider **nonlinear scales with ggplot2, e.g. scale_x_log10() and normalizing by population.**
+
+
+**Number of athletes sent by country each game**
+```{r}
+athlete_events1 
+
+athlete_events1 %>%
+  mutate(row_number=row_number()) %>%
+  count(ID,country,Games,Event,row_number) %>% #had to use a surrogate key
+  filter(n>1)
+
+athletes_sent <- athlete_events1 %>%
+  mutate(row_number=row_number()) %>%
+  count(ID,country,Games,Event,row_number,Year) %>%#had to use a surrogate key
+  count(country,Games,Year) %>%
+  arrange(Games,country)
+athletes_sent
+
+```
+
+
+**I Now want to extract summer and winter from the games column**
+```{r}
+athletes_sent_summer <- athletes_sent %>%
+  mutate(time_of_year = substr(Games,6,11)) %>%
+  filter(time_of_year=="Summer") %>%
+  mutate(athletes_sent=n) %>%
+  arrange(Year,country) %>%
+  select(country,Year,athletes_sent,time_of_year)
+athletes_sent_summer
+
+athletes_sent_winter <- athletes_sent %>%
+  mutate(time_of_year = substr(Games,6,11)) %>%
+  filter(time_of_year=="Winter") %>%
+  mutate(athletes_sent=n) %>%
+  arrange(Year,country) %>%
+  select(country,Year,athletes_sent,time_of_year)
+athletes_sent_winter
+```
+
+
+**joining GDP to the athletes sent by country for Winter and Summer**
+```{r}
+
+gapminder_unfiltered1
+
+#making sure country and year are a key
+gapminder_unfiltered1 %>%
+  select(country,year,gdpPercap) %>%
+  count(country,year) %>%
+  filter(n>1)
+
+#I want to use a mutating join to add the GDP column to the previous table made
+
+athletes_sent_summer1 <- athletes_sent_summer %>%
+ left_join(gapminder_unfiltered1,by=c("country"="country","Year"="year")) %>%
+  select(country,Year,athletes_sent,gdpPercap,time_of_year,pop) %>%
+  arrange(Year,country)
+  
+athletes_sent_summer1
+
+athletes_sent_winter1 <- athletes_sent_winter %>%
+  left_join(gapminder_unfiltered1,by=c("country"="country","Year"="year")) %>%
+  select(country,Year,athletes_sent,gdpPercap,time_of_year,pop) %>%
+  arrange(Year,country)
+  
+athletes_sent_winter1
+
+ggplot(athletes_sent_summer1,mapping=aes(x=log10(gdpPercap),y=(athletes_sent))) +
+  geom_point() +
+  labs(y="Athletes Sent to the Olympics in a given year",x="GDP per capita in a given year",title="Summer Olympics relationship between GDP and atheletes sent")
+ggplot(athletes_sent_winter1,mapping=aes(x=log10(gdpPercap),y=(athletes_sent))) +
+  geom_point() +
+  labs(y="Athletes Sent to the Olympics in a given year",x="GDP per capita in a given year",title="Winter Olympics relationship between GDP and atheletes sent")
+```
+There seems to be a positive relationship between GDP per capita and athletes sent to the olympic games for both summer and winter olympics.
+when an athelete competes more than once (in different events), they are counted as multiple athletes 
+
+
+# **Question 2**
+Question 2
+Is there a host country effect on the number of medals? In other words, do countries earn more medals when they host an Olympic games compared to when they do not host an Olympic games? To answer this question you will have to 
+count the number of medals that a country wins in each game, being careful about how you handle team events. 
+You will also have to join the Olympics data with the host_cities data to determine the country of the host city. 
+You will want to think about numbers or possibly rates, and how to compare a country’s winnings when it hosts a game versus when it has not hosted a game.
+
+
+```{r}
+athlete_events1
+medals <- athlete_events1 %>%
+  mutate(is_medal=!is.na(Medal)) %>%
+  #to handle team events 
+  group_by(country,Year,Season,Event,Medal) %>%
+  mutate(number_in_event=n())%>% #if this is >1, **WHILE there is a won medal**, this indicates either a team win for the event, or a tie between two contestants from the same country, in either case, I will count this as only 1 gold medal for said country in that olympic season. 
+  mutate(multiple_entries = number_in_event>1) %>%
+  mutate(team_win = (multiple_entries & is_medal) )%>% #(&& is_medal needs to be true) refrence above comment
+  ungroup() %>%
+  #select(country,Year,Season,team_win,is_medal,Event,everything()) %>%
+  arrange(desc(team_win),country,Year,Season) %>%
+  select(country,Year,Season,team_win,is_medal,Event,City) %>%
+  group_by(country,Year,Season,City) %>%
+  distinct() %>% #gets rid of duplicate rows
+  summarise(medal_total=sum(is_medal))%>%# %of medals won based off event entries in that game season
+  rename(host_city=City)
+  
+
+medals
+```
+
+**Now to prep the location data for merging**
+```{r}
+
+
+host_cities1 <- host_cities %>%
+  rename(host_city=city) %>%
+  rename(host_country=country)
+host_cities1
+
+country_codes4 <- countrycode(sourcevar=host_cities1$host_country, origin="country.name", destination="iso3c", nomatch=NA)
+
+host_cities2 <- host_cities1 %>%
+  mutate(host_country=country_codes4)
+
+hostAndMedals <- medals %>%
+  left_join(host_cities2,by=c("host_city")) %>%
+  select(country,Year,Season,medal_total,host_city,host_country)
+
+hostAndMedals
+  
+```
+
+**Now that the two tables are joined, its time for more data organization**
+```{r}
+hostAndMedals %>%
+  mutate(is_host = (country==host_country)) %>%
+  group_by(country,is_host) %>%
+  summarise(medal_total2=sum(medal_total)) %>%
+  arrange(country,is_host) %>%
+  ungroup() %>%
+  group_by(is_host) %>%
+  summarise(avg_medal_count=mean(medal_total2))
+```
+
+# **Question 2 ATTEMPT 2**
+
+Lets first merge the relevant data into one tibble and do some reorganization to make the data easier to work with
+```{r}
+
+athlete_events2 <- athlete_events1 %>%
+  rename(host_city=City)
+
+host_cities1 <- host_cities %>%
+  rename(host_city=city) %>%
+  rename(host_country=country)
+country_codes4 <- countrycode(sourcevar=host_cities1$host_country, origin="country.name", destination="iso3c", nomatch=NA)
+host_cities2 <- host_cities1 %>%
+  mutate(host_country=country_codes4)
+
+host_cities2
+athlete_events2
+
+joined <- athlete_events2 %>%
+  left_join(host_cities2,by=c("host_city")) %>%
+  select(country,Year,Season,host_country,Medal,Event,everything())
+
+joined #this new tibble is athlete_events with the host country data now added
+
+```
+
+Lets count the number of medals a country gets for every Olympics game
+Lets also count team wins as a single medal as well as ties among contestants from the same country as a single medal
+```{r}
+
+Medals <- joined %>%
+  mutate(won_medal = !is.na(Medal)) %>%
+  mutate(is_host = (country==host_country)) %>%
+  #The next three lines account for team wins and ties among same country contestants
+  #it also eliminates multiple losing contestants from the same country, but that is okay
+  #because we are only counting wins in this data frame
+  select(country,Year,Season,Event,Medal) %>%
+  group_by(country,Year,Season,Event,Medal) %>% 
+  distinct() %>%
+  ungroup() %>%
+  #now we can tally the wins
+  filter(!is.na(Medal)) %>%
+  group_by(country,Year,Season) %>%
+  summarise(medal_count=n())
+  #here I checked a few rows: 
+#in 2016 Australia won 29 medals, this agrees with my data
+#in 2014 Australia won 3 medals, this also agrees
+#in 2012 Australia won 35 medals, this also agrees with my data
+#I am now more confident that I have handled ties and team wins appropriately 
+
+Medals
+
+  
+
+```
+
+Now lets add back in the data about the host country
+```{r}
+
+#a dataframe with only the data about the host countries in is03c 
+host_countries <- joined %>%
+  select(Year,Season,host_country) %>%
+  distinct()
+host_countries
+#note: there have been 53 olympics, but there is only 52 entries here -  this could be investigated further
+
+#now lets combine this with the Medals data frame organized in the last code block
+Medals_hosts <- Medals %>%
+  left_join(host_countries,by=c("Year"="Year","Season"="Season")) %>%
+  filter(!is.na(country)) #this gets rid of countries missing from the iso3c list
+Medals_hosts
+
+```
+
+**DURING ANALYSIS, COME HERE TO SEPARATE SUMMER AND WINTER OLYMPICS HERE**
+
+Now that the data is rejoined, lets find out how many games each country has hosted and how many games a each country participated in, but not hosted (guest count). At the same time, lets also count the number of medals received during these conditions
+```{r}
+#the number of games each country has hosted
+host_count <- Medals_hosts %>%
+  filter(country==host_country) %>%
+  #the number of games a country has hosted is now equal to the number of times it appears in this 
+  #data frame as a row. 
+  group_by(country) %>%
+  summarise(host_count=n(),host_medals=sum(medal_count)) %>%
+  #lets now compute the average number of medals while hosting
+  mutate(avg_medals_as_host = host_medals/host_count)
+host_count
+
+#lets call the number of times a country has traveled to compete as the guest_count
+guest_count <- Medals_hosts %>%
+  filter(country!=host_country) %>%
+  group_by(country) %>%
+  summarise(guest_count=n(),guest_medals=sum(medal_count)) %>%
+  mutate(avg_medals_as_guest = guest_medals/guest_count)
+guest_count
+```
+
+Lets combine the previous two data frames and create new variables 
+note that the host_count data frame is much shorter, which affects the way a join must be done
+```{r}
+country_medals <- guest_count %>%
+  left_join(host_count,by=c("country")) %>%
+  #countries that have not hosted will have NA values
+  select(country,avg_medals_as_guest,avg_medals_as_host,everything())
+  #Do the non hosting countries tell anything about medal count?
+country_medals
+
+#lets keep the non hosting counties in and compute the average medals of guest and host overall
+country_medals %>%
+  summarise(avg_medals_as_guest=sum(guest_medals)/sum(guest_count),avg_medals_as_host=sum(host_medals,na.rm=T)/sum(host_count,na.rm=T))
+#note that this may not be a good comparison, perhaps countries that are able to host are also more able to gain medals. Lets filter out the countries that have not hosted
+
+country_medals %>%
+  filter(!is.na(host_count)) %>%
+  summarise(avg_medals_as_guest=sum(guest_medals)/sum(guest_count),avg_medals_as_host=sum(host_medals,na.rm=T)/sum(host_count,na.rm=T))
+#these results suggest that it is possible that hosting counties are more able to gain medals in general, even as guests. this is suggested by the difference in average medal count as a guest between countries that have hosted and the overall average medal count as a guest. This is however, besides the point of the question. 
+
+#lets look at the % difference between the host and guest average medals by country
+country_medals %>%
+  filter(!is.na(host_count)) %>%
+  mutate(medal_percent_differnce=100*(avg_medals_as_host-avg_medals_as_guest)/avg_medals_as_guest) %>%
+  select(country,medal_percent_differnce) 
+#These percent differences in medal counts are quite high. This may be due to a host country being more able to host their season of olympics that they exceed in. lets go back and separate the summer from winter. 
+  
+
+  
+
+```
+Lets sanity check these numbers 
+Austalia has won 546 medals total and hosted 2 olympic games
+AUS hosted in 1956 and 2000, and won 35 and 58 medals respectively, this averages 46.5 medals
+Australia has participated in 49 olympic games. 
+this means australia has won 546-35-58 medals during 49-2 games, this averages 9.638 medals per game
+This is a 382.46% increase overall. 
+
+This slightly differs from my average medals during non hosted games of 13. This discrepancy could be investigated further
+
+# **Separating summer and winter hereforth**
+
+## **Summer**
+```{r}
+Medals_hosts_summer <- Medals_hosts %>%
+  filter(Season=="Summer") 
+Medals_hosts_winter <- Medals_hosts %>%
+  filter(Season=="Winter") 
+Medals_hosts_summer
+
+#The below lines are a copy of the above lines, lets repeat them for summer and then winter
+#lets not use a function, the code is only being used three times and is more understandable as three chunks because I do not want to do some of the above calculations
+
+#the number of games each country has hosted
+host_count <- Medals_hosts_summer %>%
+  filter(country==host_country) %>%
+  group_by(country) %>%
+  summarise(host_count=n(),host_medals=sum(medal_count)) %>%
+  mutate(avg_medals_as_host = host_medals/host_count)
+guest_count <- Medals_hosts_summer %>%
+  filter(country!=host_country) %>%
+  group_by(country) %>%
+  summarise(guest_count=n(),guest_medals=sum(medal_count)) %>%
+  mutate(avg_medals_as_guest = guest_medals/guest_count)
+country_medals <- guest_count %>%
+  left_join(host_count,by=c("country")) %>%
+  select(country,avg_medals_as_guest,avg_medals_as_host,everything())
+
+country_medals %>%
+  filter(!is.na(host_count)) %>%
+  summarise(avg_medals_as_guest=sum(guest_medals)/sum(guest_count),avg_medals_as_host=sum(host_medals,na.rm=T)/sum(host_count,na.rm=T)) %>%
+  mutate(percent_difference=100*(avg_medals_as_host-avg_medals_as_guest)/avg_medals_as_guest)
+
+country_medals %>%
+  filter(!is.na(host_count)) %>%
+  mutate(medal_percent_differnce=100*(avg_medals_as_host-avg_medals_as_guest)/avg_medals_as_guest) %>%
+  select(country,medal_percent_differnce) 
+#These percent differences in medal counts are now for summer only
+
+```
+
+This is for summer, the overall % increase in medals and by country
+
+There seems to be a large advantage to being the host country in the olympics. Perhaps this is because the contestants train harder, or because their training facilities are newly updated. 
+
+## **Lets now do winter**
+```{r}
+Medals_hosts_winter
+host_count <- Medals_hosts_winter %>%
+  filter(country==host_country) %>%
+  group_by(country) %>%
+  summarise(host_count=n(),host_medals=sum(medal_count)) %>%
+  mutate(avg_medals_as_host = host_medals/host_count)
+guest_count <- Medals_hosts_summer %>%
+  filter(country!=host_country) %>%
+  group_by(country) %>%
+  summarise(guest_count=n(),guest_medals=sum(medal_count)) %>%
+  mutate(avg_medals_as_guest = guest_medals/guest_count)
+country_medals <- guest_count %>%
+  left_join(host_count,by=c("country")) %>%
+  select(country,avg_medals_as_guest,avg_medals_as_host,everything())
+
+country_medals %>%
+  filter(!is.na(host_count)) %>%
+  summarise(avg_medals_as_guest=sum(guest_medals)/sum(guest_count),avg_medals_as_host=sum(host_medals,na.rm=T)/sum(host_count,na.rm=T)) %>%
+  mutate(percent_difference=100*(avg_medals_as_host-avg_medals_as_guest)/avg_medals_as_guest)
+
+country_medals %>%
+  filter(!is.na(host_count)) %>%
+  mutate(medal_percent_differnce=100*(avg_medals_as_host-avg_medals_as_guest)/avg_medals_as_guest) %>%
+  select(country,medal_percent_differnce) 
+#These percent differences in medal counts are now for summer 
+```
+It seems that the larger countries do worse in the winter Olympics when they host than when they do not host
