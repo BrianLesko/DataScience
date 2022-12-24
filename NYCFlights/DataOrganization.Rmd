@@ -1,0 +1,607 @@
+---
+title: "homework-07"
+author: "Brian J Lesko"
+date: '2022-05-30'
+output: html_document 
+---
+
+```{r setup, include=FALSE}
+# Enable echo by default, disable messages, and enable cache to reduce 
+# knitting time when we make minor changes
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, cache = TRUE)
+```
+
+```{r warning = FALSE, message = FALSE, cache = FALSE}
+library(ggplot2) # or library(tidyverse)
+library(tidyverse)
+library(nycflights13)
+```
+
+# Reading 
+Read R4DS 12.1–12.3 and R4DS 13.1–13.5
+
+# R4DS Exercises
+
+## 12.2.1 (1–3)
+
+### Exercise 1 
+Using prose, describe how the variables and observations are organised in each of the sample tables.
+
+Table 1: 
+Table one is tidy, meaning that each variable has its own column and each observation has its own row. As a consequence, his results in each value having its own cell. 
+
+Table 2:
+Each observation in time has two rows in this dataset, each row has the country and time, but for the same observation in time, one row will have a variable called type of the character string of the value "cases" or "population". the count variable then describes the count of either the cases or population depending on the type variable,
+
+Table 3:
+In this dataset, each observation in time has only one row. The country and year exist in columns along with a rate variable that describes the cases / population in one cell. In this aspect it can be thought that there is only one composite varaible, or that two variables are in a single cell. 
+
+Table 4: 
+In table 4, two tibbles are used. One describes the number of cases while the other describes the population, with every year with its own column. 
+
+
+### Exercise 2
+Compute the rate for table2 and table4a + table4b. Four operations are necessary:
+extract the # of TB cases per country per year
+extract the matching population per country per year
+divide the cases by population, and multiply by 10,000
+store back in the appropriate place
+
+Which representation is easiest? why? Which is hardest, and why? 
+
+Table 4 was more difficult because of its two table layout, figuring out how to combine the data and select it was most difficult. Table 2 was easy to convert to a tidy layout which then made computing the rate very easy. 
+```{r}
+table2
+
+table2M <- table2 %>%
+  pivot_wider(names_from=type,values_from=count) %>%
+  mutate(rate=cases/population*10000)
+
+table2M
+
+#is this what is asked for? I made the table tidy, then computed the rate?? 
+# the data is stored better now
+
+table4Rate <-tibble(
+  country = table4a$country,
+  `1999`=table4a[["1999"]]/table4b[["1999"]]*10000, #refrence creating improper variable names
+  `2000`=table4a[["2000"]]/table4b[["2000"]]*10000
+)
+
+table4Rate
+  
+```
+```{r}
+#trying table 2 again for the fun of it. this time keeping the style of the original table
+
+table2cases <- table2 %>%
+  filter(type=="cases")
+
+table2population <- table2 %>%
+  filter(type=="population")
+
+table2Rate <- tibble(
+  rate = table2cases[["count"]]/table2population[["count"]]*10000
+)
+table2Rate #this attempt is a fail
+```
+
+
+### Exercise 3
+Recreate the plot showing change in cases over time using table2 instead of table1. What do you need to do first?  
+
+The first thing I did was filter the data so that only the cases rows would remain
+
+```{r}
+
+table2 %>%
+  filter(type=="cases") %>%
+  ggplot(aes(x=year,y=count)) +
+  geom_line(aes(group=country),color="black") +
+  geom_point(aes(color=country)) + 
+  labs(y="cases")
+  
+
+```
+
+
+## 12.3.3 (1–4)
+
+### Exercise 1
+Why are the pivot functions not symmetrical? 
+
+```{r}
+stocks <- tibble(
+  year   = c(2015, 2015, 2016, 2016),
+  half  = c(   1,    2,     1,    2),
+  return = c(1.88, 0.59, 0.92, 0.17)
+)
+stocks
+stocks %>% 
+  pivot_wider(names_from = year, values_from = return) %>% 
+  pivot_longer(`2015`:`2016`, names_to = "year", values_to = "return")
+```
+it can be seen that the operations are not perfectly symmetrical because the order of boht columns and rows is not preserved after the useage of wider and longer functions. This can be visualised with the help of 
+table 12.3:pivoting into a "wider", tidy form    and 
+table 12.2: Pivoting table4 into a longer, tidy form
+
+the column variable types are also not preserved, they start as all doubles, but afterward, the year becomes a character. 
+
+names_ptypes confirms that the new column variables have the expected types/attributes/class, it is a list so that each column can be confirmed seperately.
+
+### Exercise 2
+Why does this code fail?
+```{r}
+table4a %>% 
+  pivot_longer(c(`1999`, `2000`), names_to = "year", values_to = "cases")
+#> Error: Can't subset columns that don't exist.
+#> ✖ Locations 1999 and 2000 don't exist.
+#> ℹ There are only 3 columns.
+```
+The code needed backticks around the concatonated years in order to distinguish them from improper variable names. I fixed this and the code works.
+
+### Exercise 3
+what would haoppen if you widen this table? why? how could you add a new column to uniquely identify each value?
+
+The wider operation will not work as intended because the name and names columns are repeatable, there are two rows with age for phillip woods, this does not allow creating columns from the values in the names column.
+
+If another column is added using a group by name and names followed by a mutate using row number, this new variable can then uniquely identify each value along with the name column. Then pivot wider will work as intended.
+```{r}
+people <- tribble(
+  ~name,             ~names,  ~values,
+  #-----------------|--------|------
+  "Phillip Woods",   "age",       45,
+  "Phillip Woods",   "height",   186,
+  "Phillip Woods",   "age",       50,
+  "Jessica Cordero", "age",       37,
+  "Jessica Cordero", "height",   156
+)
+people 
+people_wider <- people %>% 
+  pivot_wider(names_from=names,values_from=values)
+people_wider
+```
+
+### Exercise 4
+Tidy the table below. is wider or longer needed? What are the variables
+
+gender(chr), pregnant(chr), number(int) are the variables
+```{r}
+preg <- tribble(
+  ~pregnant, ~male, ~female,
+  "yes",     NA,    10,
+  "no",      20,    12
+)
+preg
+
+#the variables should be
+#person number(int), gender(chr), pregnant(chr)
+#Correction below
+#gender(chr), pregnant(chr), number(int)
+#this second way is the preffered method
+
+preg_tidy <- preg %>%
+  pivot_longer(cols=c(male,female),names_to="gender",values_to="number")
+
+preg_tidy
+  
+  
+```
+
+
+## 13.3.1 (1–2)
+
+### Exercise 1
+Add a surrogate key to flights
+```{r}
+flightsS <- flights %>%
+  mutate(key=row_number()) %>%
+  select(key,everything())
+
+flightsS
+```
+### Exercise 2
+
+Identify the Keys in the following datasets
+```{r}
+#install.packages("Lahman")
+library(Lahman)
+```
+```{r}
+Lahman::Batting
+
+Lahman::Batting %>%
+  count(playerID,yearID,teamID,stint) %>%
+  filter(n > 1)
+
+#since stint is the order of appearances, it may allow the exclusion of TeamID in the dataset key
+Lahman::Batting %>%
+  count(playerID,yearID,stint) %>%
+  filter(n > 1)
+#this turns out to be true
+```
+```{r}
+#install.packages("babynames")
+library(babynames)
+```
+```{r}
+
+babynames::babynames
+
+babynames %>%
+  count(year,sex,name) %>%
+  filter(n>1)
+
+#year sex and name work as a key here
+
+babynames %>%
+  filter(prop==max(prop))
+
+```
+```{r}
+#install.packages("nasaweather")
+library(nasaweather)
+```
+```{r}
+nasaweather::atmos
+
+atmos %>%
+  count(year,month,lat,long) %>%
+  filter(n>1)
+
+#year month lat and long work as a key
+
+```
+```{r}
+#install.packages("fueleconomy")
+library(fueleconomy)
+```
+```{r}
+fueleconomy::vehicles
+
+vehicles %>%
+  count(id) %>%
+  filter(n>1)
+
+#Id is enough in this case
+```
+```{r}
+diamonds
+
+diamonds %>%
+  count(carat,cut,color,clarity,depth,table,price,x,y,z) %>%
+  filter(n>1)
+
+#No variable combination will work as a key (I tried every variable in the check), a surrogate key may be useful. 
+```
+
+## 13.4.6 (1–5)
+
+### Exercise 1 
+Compute the average delay by destination, then join on the airports data frame so you can show the spatial distribution of delays. Here’s an easy way to draw a map of the United States:
+
+```{r}
+delay_by_dest <- flights %>%
+  group_by(dest) %>%
+  summarise(avg_delay=mean(arr_delay,na.rm=T))
+
+delay_by_dest
+
+joined <- delay_by_dest %>%
+  left_join(airports,c("dest"="faa"))
+
+joined
+
+joined %>%
+  ggplot(aes(lon, lat,color=avg_delay,size=avg_delay)) +
+    borders("state") +
+    geom_point() +
+    coord_quickmap()
+
+```
+
+```{r}
+#the given code for refrence
+airports %>%
+  semi_join(flights, c("faa" = "dest")) %>%
+  ggplot(aes(lon, lat)) +
+    borders("state") +
+    geom_point() +
+    coord_quickmap()
+```
+
+### Exercise 2
+
+Add the location of the origin and destination (i.e. the lat and lon) to flights
+
+```{r}
+flights2 <- flights %>%
+  left_join(airports,by=c("dest"="faa")) %>%
+  rename(dest_lat=lat) %>%
+  rename(dest_lon=lon) %>%
+  left_join(airports,by=c("origin"="faa")) %>%
+  rename(origin_lat=lat,origin_lon=lon) 
+
+flights2
+```
+### Exercise 3
+Is there a relationship between plane age and its delays? 
+
+There seems not to be any relationship between plane age and delay. This is somewhat unexpected.
+
+```{r}
+
+delay_by_plane <- flights %>%
+  group_by(tailnum) %>%
+  summarise(delay=mean(arr_delay,na.rm=T))
+
+delay_by_plane
+
+delay_by_plane %>%
+  left_join(planes) %>%
+  ggplot(mapping=aes(year,log2(delay))) +
+  geom_point() +
+  geom_smooth()
+
+```
+### Exercise 4
+
+What weather conditions make delay more likely?
+
+```{r}
+
+rain_delay <- flights %>% 
+  left_join(weather,by =c("origin" = "origin",
+                            "year" = "year", 
+                          "month" = "month", 
+                          "day" = "day", 
+                          "hour" = "hour")
+             ) %>%
+  group_by(precip) %>%
+  mutate(delay=mean(arr_delay,na.rm =T))
+
+rain_delay
+
+  ggplot(data=rain_delay) +
+    geom_smooth(mapping=aes(x=precip,y=delay)) + 
+    geom_point(mapping=aes(x=precip,y=delay)) 
+
+
+
+```
+Delay increases as precipitation increases
+```{r}
+visib_delay <- flights %>% 
+  left_join(weather,by =c("origin" = "origin",
+                            "year" = "year", 
+                          "month" = "month", 
+                          "day" = "day", 
+                          "hour" = "hour")
+             ) %>%
+  group_by(visib) %>%
+  mutate(delay=mean(arr_delay,na.rm =T))
+
+visib_delay
+
+  ggplot(data=visib_delay) +
+    geom_smooth(mapping=aes(x=visib,y=delay)) + 
+    geom_point(mapping=aes(x=visib,y=delay)) 
+```
+Delay decreases as visibility increases
+
+```{r}
+wind_delay <- flights %>% 
+  left_join(weather,by =c("origin" = "origin",
+                            "year" = "year", 
+                          "month" = "month", 
+                          "day" = "day", 
+                          "hour" = "hour")
+             ) %>%
+  group_by(wind_speed) %>%
+  mutate(delay=mean(arr_delay,na.rm =T))
+
+wind_delay
+
+  ggplot(data=wind_delay) +
+    geom_smooth(mapping=aes(x=wind_speed,y=delay)) + 
+    geom_point(mapping=aes(x=wind_speed,y=delay)) 
+```
+As wind speed increases, delay increases. 
+
+### Exercise 5
+
+What happened on June 13 2013? Display the spatial pattern of delays, and then use Google to cross-reference with the weather.
+
+```{r}
+
+flights 
+
+delays_by_dest_june13 <- flights %>%
+  filter(year==2013) %>% #unnecessary since its only 2013 flights
+  filter(month==6) %>%
+  filter(day==13) %>%
+  group_by(dest) %>%
+  summarise(delay = mean(arr_delay,na.rm=T))
+
+delays_by_dest_june13
+
+
+joined <- delays_by_dest_june13 %>%
+  left_join(airports,c("dest"="faa"))
+
+joined
+
+joined %>%
+  ggplot(aes(lon, lat,color=delay,size=delay)) +
+    borders("state") +
+    geom_point() +
+    coord_quickmap()
+
+
+```
+here is the map of arrival delays at each destination airport on June 13th 2013.
+An internet search confirms that there were severe thunderstorms for my own area (Ohio) and many other areas on this day. 
+
+
+## 13.5.1 (1–5)
+
+### Exercise 1
+```{r}
+flights %>%
+  anti_join(planes, by = "tailnum") %>%
+  count(tailnum, sort = T)
+
+?planes
+
+```
+
+most tailnum in flights that doesnt have a match in planes starts with N, and ends with MQ or AA
+This associates with american airlines and envoy air. Looking at the planes data, this is stated:
+"Plane metadata for all plane tailnumbers found in the FAA aircraft registry. American Airways (AA) and Envoy Air (MQ) report fleet numbers rather than tail numbers so can't be matched."
+
+### Exercise 2
+Filter flights to only show flights with planes that have flown at least 100 flights.
+
+```{r}
+#planes
+
+flights
+
+#finding the planes that have flown over 100 flights (we need the flights that use theses planes)
+planes_with_100_flights <- flights %>%
+  filter(!is.na(tailnum)) %>% # get rid of tailnum NA's
+  group_by(tailnum) %>%
+  count() %>%
+  filter(n>=100)
+
+#the flights that use the above planes
+flights %>%
+  semi_join(planes_with_100_flights,by=c("tailnum"="tailnum"))
+
+
+```
+
+### Exercise 3
+Combine fueleconomy::vehicles and fueleconomy::common to find only the records for the most common models.
+
+```{r}
+library(fueleconomy)
+```
+```{r}
+common
+vehicles
+vehicles %>%
+  semi_join(common,by=c("make"="make","model"="model"))
+
+```
+
+
+### Exercise 4
+
+Find the 48 hours (over the course of the whole year) that have the worst delays. Cross-reference it with the weather data. Can you see any patterns?
+
+48 non continuous hours: Worst dep_delay
+```{r}
+delay_by_hour <- flights %>%
+  group_by(hour) %>%
+  summarise(mean_delay=mean(dep_delay,na.rm=T))
+
+delay_by_hour
+```
+
+
+### Exercise 5
+
+What does anti_join(flights, airports, by = c("dest" = "faa")) tell you? What does anti_join(airports, flights, by = c("faa" = "dest")) tell you?
+
+The first expression removes all the flights with destinations in the airports dataset. leaving only the flights that dont have an faa code in airports. perhaps international? 
+
+the second line removes all the airports that were destinations in the flights dataset. leaving only the airports with an faa code not flown to by airports in nyc in 2013
+
+### Exercise 6
+
+You might expect that there’s an implicit relationship between plane and airline, because each plane is flown by a single airline. Confirm or reject this hypothesis using the tools you’ve learned above.
+
+```{r}
+
+flights %>%
+  group_by(tailnum,carrier) %>%
+  summarise(count=n()) %>%
+  ungroup() %>% ungroup() %>%
+  group_by(tailnum) %>%
+  summarise(count=n(),carrier) %>%
+  filter(count>1) %>%
+  ungroup() %>%
+  left_join(airlines,by=c("carrier"="carrier"))
+
+
+```
+
+The hypthesis is rejected. Flights can be flown by multiple carriers through buying and selling in the same year. (I am writing quick bc my work was deleted for exercise 5 and 6 :( )
+
+before my work was deleted, I found that tailnum N146PQ was sold in 2013 around months 2-4 from 9E to EV (also shown above without a date)
+
+# Additional Exercise
+
+
+```{r}
+load(url(
+"https://www.stat.osu.edu/~vqv/4194/data/masters2011-untidy.rda"
+))
+```
+```{r}
+round1T <- round1 %>%
+  pivot_longer(`1`:`18`,names_to="hole",values_to="score") %>%
+  mutate(round=1.0,hole=as.integer(hole)) 
+round1T 
+round2T <- round2 %>%
+  pivot_longer(`1`:`18`,names_to="hole",values_to="score") %>%
+  mutate(hole=as.integer(hole),round=2.0) 
+round2T 
+round3T <- round3 %>%
+  pivot_longer(`1`:`18`,names_to="hole",values_to="score") %>%
+  mutate(hole=as.integer(hole),round=3.0)
+round3T 
+round4T <- round4 %>%
+  pivot_longer(`1`:`18`,names_to="hole",values_to="score") %>%
+  mutate(hole=as.integer(hole),round=4.0) 
+round4T 
+
+#alternative to what was in lecture
+rounds <- list(round1T,round2T,round3T,round4T)
+all_rounds <- bind_rows(rounds)
+all_rounds
+```
+```{r}
+winner <- leaderboard %>%
+  filter(!position=="CUT") %>%
+  filter(position==1)
+winner
+```
+```{r}
+#install.packages("ggrepel")
+library(ggrepel)
+```
+
+
+```{r}
+
+with_par <- all_rounds %>%
+  left_join(course,by="hole") %>%
+  mutate(par_score=score-par) %>%
+  group_by(player) %>%
+  arrange(player,round,hole) %>%
+  mutate(trueScore = cumsum(par_score)) %>%
+  select(player,round,hole,trueScore,par_score,everything())
+with_par
+
+ggplot(with_par,mapping=aes(x=hole,y=trueScore,group=player,color=player)) +
+  geom_line(show.legend=F) +
+  facet_grid(cols=vars(round))
+  
+
+```
+
+
+
+
