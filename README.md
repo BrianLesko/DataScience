@@ -1,4 +1,4 @@
-# Data Science 
+# R Data Science 
 
 Contents: Written by Brian Lesko, the repository contains R scripts demonstrating data science topics largely originating under study at Ohio State. 
 
